@@ -2,7 +2,7 @@
 ---
 🤖 # Console AI Chat using g4f
 
-[![Code Version](https://img.shields.io/badge/G4FChat-1.1.0-blue.svg)]
+[Code Version](https://img.shields.io/badge/G4FChat-1.1.0-blue.svg)
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![g4f Version](https://img.shields.io/badge/g4f-0.5.7.5-green.svg)](https://github.com/xtekky/gpt4free)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -105,7 +105,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 ---
 # 🤖 Консольный AI Чат с использованием g4f
 
-[![Версия кода](https://img.shields.io/badge/G4FChat-1.1.0-blue.svg)]
+[Версия кода](https://img.shields.io/badge/G4FChat-1.1.0-blue.svg)
 [![Версия Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Версия g4f](https://img.shields.io/badge/g4f-0.5.7.5-green.svg)](https://github.com/xtekky/gpt4free)
 [![Лицензия](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
