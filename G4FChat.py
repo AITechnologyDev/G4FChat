@@ -622,9 +622,24 @@ def set_model(user_id, model_name):
     
     try:
         supported_models = get_supported_models()
+        all_models = set()
         
-        if model_name not in supported_models:
-            console.print(f"[red]❌ {tr('model_error', lang)}. /models {tr('list_models', lang).lower()}[/]")
+        # Flatten all models from different providers
+        for provider_models in supported_models.values():
+            all_models.update(provider_models)
+        
+        if model_name not in all_models:
+            # Show similar models if the requested one isn't found
+            similar_models = [m for m in all_models if model_name.lower() in m.lower()]
+            
+            console.print(f"[red]❌ {tr('model_error', lang)}: '{model_name}'[/]")
+            
+            if similar_models:
+                console.print(f"[yellow]Similar available models:[/]")
+                for model in similar_models:
+                    console.print(f"  - {model}")
+            
+            console.print(f"\nUse [bold]/models[/] to see all available models")
             return False
         
         user_models = load_user_models()
@@ -635,7 +650,7 @@ def set_model(user_id, model_name):
         return True
     except Exception as e:
         logger.error(f"Model set error: {e}")
-        console.print(f"[red]❌ {tr('model_error', lang)}[/]")
+        console.print(f"[red]❌ {tr('model_error', lang)}: {str(e)[:100]}[/]")
         return False
 
 # Создание нового чата

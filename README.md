@@ -1,50 +1,62 @@
 🇬🇧🇺🇸ENG
 ---
-🤖 # Console AI Chat using g4f
+🤖 # Console AI Chat using g4f v1.1.1
 
-[![Code Version](https://img.shields.io/badge/G4FChat-1.110-blue.svg)]
+[![Code Version](https://img.shields.io/badge/G4FChat-1.1.1-blue.svg)]
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![g4f Version](https://img.shields.io/badge/g4f-0.5.7.5-green.svg)](https://github.com/xtekky/gpt4free)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-A simple yet powerful console AI chatbot that uses the g4f library to interact with different language models through free APIs.
+## 🎉 Release 1.1.1 Announcement
 
-## ✨ Features
+We're excited to announce version 1.1.1 of G4FChat! This update brings significant improvements and new features to enhance your AI chatting experience.
 
-- Support for 70+ models (GPT-4o, Claude 3.5, Llama 3, Gemini, etc.)
-- Manage multiple chats with history saving
-- Beautiful interface with Rich library
-- Automatic detection of working providers
-- Syntax highlighting for code blocks
-- Model "thinking" reflections system
-- Cross-platform support (Windows/Linux/macOS/Termux)
-- Multi-language interface (English/Russian)
-- Auto-saving of code snippets
-- Usage statistics tracking
+### 🔥 What's New
 
-## 🆕 New in 1.1.1
+- **Enhanced Model Support**: Added 20+ new cutting-edge models including:
+  - Claude 3.5 Sonnet
+  - Gemini 2.5 Flash/Pro
+  - Llama 3.1/3.2 series
+  - Qwen 2.5/3 models
+  - DeepSeek V3/R1
 
-- **Bug Fixes**: Fix a lot of bugs
-- **New arrangement of models**: Models are arranged by providers
-- **New Models**: 20+ models added
+- **Improved Model Organization**: 
+  - Models are now logically grouped by provider (OpenAI, Anthropic, Google, etc.)
+  - Better model discovery with `/models` command
+  - More accurate model suggestions when using `/setmodel`
 
-## ⚙️ Installation
+- **Critical Bug Fixes**:
+  - Fixed provider selection algorithm
+  - Resolved chat history saving issues
+  - Improved error handling and recovery
+  - Fixed model switching reliability
 
-1. Clone the repository:
+- **User Experience Improvements**:
+  - Better command feedback with helpful suggestions
+  - Enhanced status information in `/status` command
+  - More reliable code block saving
+  - Improved multi-language support
+
+### 🚀 Getting Started
+
+Update your existing installation:
+```bash
+git pull origin main
+pip install -r requirements.txt --upgrade
+```
+
+Or install fresh:
 ```bash
 git clone https://github.com/AITechnologyDev/G4FChat.git
 cd G4FChat
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
-```
-
-## 🚀 Launching
-```bash
 python G4FChat.py
 ```
+
+### 📌 Known Issues
+
+- Some models may have limited availability depending on provider status
+- First-time initialization might take longer due to enhanced provider checks
 
 ## 🛠 Commands
 
@@ -99,54 +111,65 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 > Developed by [AiTechnologyDev](https://github.com/AITechnologyDev) | 2025
 
 ---
-🇷🇺 RU
+🇷🇺RU
 ---
-# 🤖 Консольный AI Чат с использованием g4f
+🤖 # Консольный AI Чат с использованием g4f v1.1.1
 
 [![Версия кода](https://img.shields.io/badge/G4FChat-1.1.1-blue.svg)]
 [![Версия Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Версия g4f](https://img.shields.io/badge/g4f-0.5.7.5-green.svg)](https://github.com/xtekky/gpt4free)
 [![Лицензия](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-Простой, но мощный консольный AI чат-бот, использующий библиотеку g4f для взаимодействия с различными языковыми моделями через бесплатные API.
+## 🎉 Анонс версии 1.1.1
 
-## ✨ Особенности
+Мы рады представить версию 1.1.1 G4FChat! Это обновление приносит значительные улучшения и новые функции для улучшения вашего общения с ИИ.
 
-- Поддержка 70+ моделей (GPT-4o, Claude 3.5, Llama 3, Gemini и др.)
-- Управление несколькими чатами с сохранением истории
-- Красивый интерфейс с библиотекой Rich
-- Автоматическое определение рабочих провайдеров
-- Подсветка синтаксиса для блоков кода
-- Система "размышлений" модели
-- Кроссплатформенная работа (Windows/Linux/macOS/Termux)
-- Многоязычный интерфейс (Английский/Русский)
-- Автосохранение фрагментов кода
-- Отслеживание статистики использования
+### 🔥 Что нового
 
-## 🆕 Новое в 1.1.1
+- **Расширенная поддержка моделей**: Добавлено 20+ новых современных моделей, включая:
+  - Claude 3.5 Sonnet
+  - Gemini 2.5 Flash/Pro
+  - Llama 3.1/3.2 серии
+  - Qwen 2.5/3 модели
+  - DeepSeek V3/R1
 
-- **Исправления ошибок**: Исправлено множество ошибок
-- **Новое расположение моделей**: Модели отсортированы по поставщикам
-- **Новые модели**: Добавленно 20+ моделей
+- **Улучшенная организация моделей**:
+  - Модели теперь сгруппированы по провайдерам (OpenAI, Anthropic, Google и др.)
+  - Улучшенный поиск моделей через команду `/models`
+  - Более точные подсказки при использовании `/setmodel`
 
+- **Исправления ошибок**:
+  - Улучшен алгоритм выбора провайдеров
+  - Исправлены проблемы с сохранением истории чатов
+  - Улучшена обработка ошибок
+  - Повышена надежность переключения моделей
 
-## ⚙️ Установка
+- **Улучшения пользовательского опыта**:
+  - Более информативные ответы на команды
+  - Улучшенная информация в команде `/status`
+  - Более надежное сохранение блоков кода
+  - Улучшена поддержка нескольких языков
 
-1. Клонируйте репозиторий:
+### 🚀 Начало работы
+
+Обновите существующую установку:
+```bash
+git pull origin main
+pip install -r requirements.txt --upgrade
+```
+
+Или установите заново:
 ```bash
 git clone https://github.com/AITechnologyDev/G4FChat.git
 cd G4FChat
-```
-
-2. Установите зависимости:
-```bash
 pip install -r requirements.txt
-```
-
-## 🚀 Запуск
-```bash
 python G4FChat.py
 ```
+
+### 📌 Известные проблемы
+
+- Некоторые модели могут иметь ограниченную доступность в зависимости от статуса провайдеров
+- Первоначальная инициализация может занимать больше времени из-за улучшенных проверок
 
 ## 🛠 Команды
 
