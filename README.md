@@ -2,7 +2,7 @@
 ---
 🤖 # Console AI Chat using g4f
 
-[![Code Version](https://img.shields.io/badge/G4FChat-1.1.0-blue.svg)]
+[![Code Version](https://img.shields.io/badge/G4FChat-1.110-blue.svg)]
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![g4f Version](https://img.shields.io/badge/g4f-0.5.7.5-green.svg)](https://github.com/xtekky/gpt4free)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -11,7 +11,7 @@ A simple yet powerful console AI chatbot that uses the g4f library to interact w
 
 ## ✨ Features
 
-- Support for 50+ models (GPT-4o, Claude 3.5, Llama 3, Gemini, etc.)
+- Support for 70+ models (GPT-4o, Claude 3.5, Llama 3, Gemini, etc.)
 - Manage multiple chats with history saving
 - Beautiful interface with Rich library
 - Automatic detection of working providers
@@ -22,13 +22,11 @@ A simple yet powerful console AI chatbot that uses the g4f library to interact w
 - Auto-saving of code snippets
 - Usage statistics tracking
 
-## 🆕 New in 1.1.0
+## 🆕 New in 1.1.1
 
-- **Multi-language support**: Switch between English/Russian with `/lang` command
-- **Code auto-saving**: Code blocks automatically saved to `saved_code/` folder
-- **Enhanced UI**: Improved panels and progress indicators
-- **Statistics**: Track usage with `/stats` command
-- **Optimizations**: Faster provider initialization
+- **Bug Fixes**: Fix a lot of bugs
+- **New arrangement of models**: Models are arranged by providers
+- **New Models**: 20+ models added
 
 ## ⚙️ Installation
 
@@ -105,7 +103,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 ---
 # 🤖 Консольный AI Чат с использованием g4f
 
-[![Версия кода](https://img.shields.io/badge/G4FChat-1.1.0-blue.svg)]
+[![Версия кода](https://img.shields.io/badge/G4FChat-1.1.1-blue.svg)]
 [![Версия Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Версия g4f](https://img.shields.io/badge/g4f-0.5.7.5-green.svg)](https://github.com/xtekky/gpt4free)
 [![Лицензия](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -114,7 +112,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 
 ## ✨ Особенности
 
-- Поддержка 50+ моделей (GPT-4o, Claude 3.5, Llama 3, Gemini и др.)
+- Поддержка 70+ моделей (GPT-4o, Claude 3.5, Llama 3, Gemini и др.)
 - Управление несколькими чатами с сохранением истории
 - Красивый интерфейс с библиотекой Rich
 - Автоматическое определение рабочих провайдеров
@@ -125,13 +123,12 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 - Автосохранение фрагментов кода
 - Отслеживание статистики использования
 
-## 🆕 Новое в 1.1.0
+## 🆕 Новое в 1.1.1
 
-- **Поддержка языков**: Переключение между Английским/Русским командой `/lang`
-- **Автосохранение кода**: Блоки кода автоматически сохраняются в папку `saved_code/`
-- **Улучшенный интерфейс**: Оптимизированные панели и индикаторы прогресса
-- **Статистика**: Отслеживание использования командой `/stats`
-- **Оптимизации**: Ускоренная инициализация провайдеров
+- **Исправления ошибок**: Исправлено множество ошибок
+- **Новое расположение моделей**: Модели отсортированы по поставщикам
+- **Новые модели**: Добавленно 20+ моделей
+
 
 ## ⚙️ Установка
 
@@ -203,4 +200,10 @@ tail -f ai_chat.log
 
 ---
 > Разработано [AiTechnologyDev](https://github.com/AITechnologyDev) | 2025
+```
+
+Проект полностью готов к использованию! Для запуска просто выполните:
+
+```bash
+python G4FChat.py
 ```

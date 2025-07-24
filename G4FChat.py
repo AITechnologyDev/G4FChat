@@ -59,7 +59,7 @@ stats = {
 cache_lock = Lock()
 
 # Черный список провайдеров
-BLACKLISTED_PROVIDERS = ['BlackForestLabs_Flux1Dev', 'DeepInfra', 'FlowGpt', 'Free2GPT', 'ImageLabs', 'HuggingFace']
+BLACKLISTED_PROVIDERS = ['BlackForestLabs_Flux1Dev', 'DeepInfra', 'FlowGpt', 'Free2GPT', 'ImageLabs', 'HuggingFace', 'PollinationsImage']
 
 # Словари перевода
 TRANSLATIONS = {
@@ -340,22 +340,100 @@ def save_user_chats(data):
 
 # Полный список моделей
 def get_supported_models():
-    return [
-        "gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-3.5-turbo", 
-        "o1", "o1-mini", "o3-mini", "o3", "o3-mini-hight", 
-        "o4-mini", "o4-mini-hight", "gpt-4.1", "gpt-4.1-mini", 
-        "gpt-4.1-nano", "gpt-4.5", "llama-2-7b", "llama-2-70b", 
-        "llama-3-8b", "llama-3.1-8b", "llama-3.1-70b", "llama-3.1-405b", 
-        "llama-3.2-1b", "llama-3.2-3b", "llama-3.2-11b", "llama-3.3-70b", 
-        "llama-3.2-90b", "mistral-7b", "mixtral-8x7b", "mistral-nemo", 
-        "mistral-small-24b", "phi-4", "gemini-1.5-flash", "gemini-1.5-pro", 
-        "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro", 
-        "qwen-1.5-7b", "qwen-2-72b", "qwen-2.5", "qwen-2.5-7b", 
-        "qwen-2.5-72b", "qwen-2.5-coder-32b", "qwen-3-32b", "qwen-3-30b", 
-        "qwq-32b", "deepseek-v3", "deepseek-r1", "grok-3", "sonar-pro", 
-        "sonar", "sonar-reasoning", "sonar-reasoning-pro", "claude-3.5-sonnet", 
-        "claude-3-opus", "claude-3-sonnet", "claude-3-haiku", 
-    ]
+    return {
+        "OpenAI": {
+            'gpt-3.5-turbo',
+            'gpt-4',
+            'gpt-4o',
+            'gpt-4o-mini',
+            'gpt-4o-search',
+            'gpt-4o-mini-search',
+            'gpt-4-1',
+            'gpt-4.1-mini',
+            'gpt-4.1-nano',
+            'gpt-4.5',
+            'o1',
+            'o1-mini',
+            'o1-pro',
+            'o3',
+            'o3-mini',
+            'o3-mini-high',
+            'o4-mini',
+            'o4-mini-high'
+        },
+        "Llama": {
+            'llama-2-7b',
+            'llama-2-70b',
+            'llama-3-8b',
+            'llama-3.1-8b',
+            'llama-3.1-70b',
+            'llama-3.1-405b',
+            'llama-3.2-1b',
+            'llama-3.2-3b',
+            'llama-3.2-11b',
+            'llama-3.2-90b',
+            'llama-3.3-70b'
+        },
+        "Mistral": {
+            'mistral-nemo',
+            'mistral-7b',
+            'mistral-small-24b',
+            'mixtral-8x7b'
+        },
+        "Microsoft": {
+            'phi-4'
+        },
+        "Google": {
+            'gemini-1.5-flash',
+            'gemini-1.5-pro',
+            'gemini-2.0-flash',
+            'gemini-2.0-pro-exp',
+            'gemini-2.5-flash',
+            'gemini-2.5-pro'
+        },
+        "Qwen": {
+            'qwen-1.5-7b',
+            'qwen-2-72b',
+            'qwen-2.5',
+            'qwen-2.5-7b',
+            'qwen-2.5-72b',
+            'qwen-2.5-coder-32b',
+            'qwen-3-32b',
+            'qwen-3-30b',
+            'qwq-32b'
+        },
+        "DeepSeek": {
+            'deepseek-v3',
+            'deepseek-r1'
+        },
+        "xAI": {
+            'grok-2',
+            'grok-2-mini',
+            'early-grok-3',
+            'grok-3',
+            'grok-3-beta',
+            'grok3-mini',
+            'grok-3-mini-beta',
+            'grok-3-mini-high',
+            'grok-3-fast',
+            'grok-3-fast-mini',
+            'grok-3-r1',
+            'grok-3-thinking'
+        },
+        "Perplexity": {
+            'sonar-pro',
+            'sonar',
+            'sonar-reasoning-pro',
+            'sonar-reasoning'
+        },
+        " Anthropic": {
+            'claude-3-7-sonnet',
+            'claude-3.5-sonnet',
+            'claude-3-sonnet',
+            'claude-3-opus',
+            'claude-3-haiku'
+        }
+    }
 
 # Автосохранение кода
 def save_code_blocks(response_text, chat_id, lang='en'):
@@ -696,11 +774,16 @@ def list_models(user_id):
     lang = get_user_lang(user_id)
     
     try:
-        models_list = get_supported_models()
-        panel_text = "\n".join([f"- [bold]{model}[/]" for model in models_list])
+        models_dict = get_supported_models()
+        panel_text = ""
+        
+        for provider, models in models_dict.items():
+            panel_text += f"\n[bold underline]{provider}:[/]\n"
+            for model in sorted(models):
+                panel_text += f"  - {model}\n"
         
         console.print(Panel(
-            f"{panel_text}\n\n[bold yellow]{tr('available_models', lang)}: {len(models_list)}[/]",
+            panel_text.strip(),
             title=f"[cyan]{tr('available_models', lang)} (g4f 0.5.7.5)[/]",
             title_align="left",
             border_style="magenta",
@@ -736,13 +819,30 @@ def system_status(user_id):
     lang = get_user_lang(user_id)
     
     try:
+        # Get all supported models
+        models_dict = get_supported_models()
+        total_models = sum(len(models) for models in models_dict.values())
+        
+        # Get active providers count
+        providers = init_providers()
+        
+        # Get current model
+        user_models = load_user_models()
+        current_model = user_models.get(str(user_id), 'gpt-4o (default)')
+        
+        # Format last activity time
+        last_activity = time.strftime(tr('time_format', lang), time.localtime(stats['last_activity']))
+        
         console.print(Panel(
-            f"[bold]g4f version:[/] 0.5.7.5\n"
-            f"[bold]{tr('available_models', lang)}:[/] {len(get_supported_models())}\n"
-            f"[bold]{tr('active_providers', lang)}:[/] {len(init_providers())}\n"
+            f"[bold]{tr('current_model_title', lang)}:[/] {current_model}\n"
+            f"[bold]{tr('available_models', lang)}:[/] {total_models}\n"
+            f"[bold]{tr('active_providers', lang)}:[/] {len(providers)}\n"
             f"[bold]{tr('active_chats', lang)}:[/] {stats['active_chats']}\n"
-            f"[bold]{tr('last_activity', lang)}:[/] {time.strftime(tr('time_format', lang), time.localtime(stats['last_activity']))}\n"
-            f"[bold]System:[/] {sys.platform}",
+            f"[bold]{tr('total_messages', lang)}:[/] {stats['total_messages']}\n"
+            f"[bold]{tr('saved_blocks', lang)}:[/] {stats['saved_code_blocks']}\n"
+            f"[bold]{tr('last_activity', lang)}:[/] {last_activity}\n"
+            f"[bold]System:[/] {sys.platform}\n"
+            f"[bold]Python:[/] {sys.version.split()[0]}",
             title=f"[cyan]{tr('system_status_title', lang)}[/]",
             title_align="left",
             border_style="green",
