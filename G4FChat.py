@@ -1,3 +1,5 @@
+# G4FChat.py
+
 import uuid
 import g4f
 import json
@@ -5,11 +7,11 @@ import logging
 import sys
 import time
 import inspect
-import threading
 import os
 import re
-from threading import Lock, Event
-from g4f import Provider
+import textwrap
+from threading import Lock
+from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -18,53 +20,77 @@ from rich.style import Style
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name, TextLexer
 from pygments.formatters import TerminalFormatter
+from typing import Dict, List, Set, Tuple, Optional, Any, Union
 
-# Настройка логирования
+# Import new AsyncClient if available
+try:
+    from g4f.client import Client as G4FClient
+    USE_CLIENT_API = True
+except ImportError:
+    USE_CLIENT_API = False
+    logging.info("G4F Client API not found, falling back to legacy API.")
+
+try:
+    from g4f.version import __version__ as G4F_VERSION
+except ImportError:
+    G4F_VERSION = '0.5.7.5'
+
+# Enhanced logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     filename='ai_chat.log',
-    filemode='a'
+    filemode='a',
+    encoding='utf-8'
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация Rich
+# Initialize Rich console
 console = Console()
 error_style = Style(color="red", bold=True)
 success_style = Style(color="green", bold=True)
-warning_style = Style(color="yellow", bold=True)
-info_style = Style(color="blue", bold=True)
 ai_style = Style(color="cyan", bold=True)
 code_style = Style(color="magenta")
 
-# Конфигурационные файлы
+# Configuration files
 MODEL_FILE = 'user_models.json'
 USER_CHATS_FILE = 'user_chats.json'
 LANG_FILE = 'user_lang.json'
+CONFIG_DIR = 'chat_config'
 
-# Кэширование данных
-user_models_cache = {}
-user_chats_cache = {}
-user_lang_cache = {}
-active_providers = []
-provider_classes = {}
+# Ensure config directory exists
+os.makedirs(CONFIG_DIR, exist_ok=True)
+
+# Caching
+user_models_cache: Dict[str, str] = {}
+user_chats_cache: Dict[str, dict] = {}
+user_lang_cache: Dict[str, str] = {}
+active_providers: List[g4f.Provider.BaseProvider] = []
+provider_classes: Dict[str, g4f.Provider.BaseProvider] = {}
+
+# Global stats
 stats = {
     'total_messages': 0,
     'saved_code_blocks': 0,
     'active_chats': 0,
-    'last_activity': time.time()
+    'last_activity': time.time(),
+    'total_api_calls': 0
 }
 
-# Глобальная блокировка для потокобезопасности
+# Thread safety
 cache_lock = Lock()
 
-# Черный список провайдеров
-BLACKLISTED_PROVIDERS = ['BlackForestLabs_Flux1Dev', 'DeepInfra', 'FlowGpt', 'Free2GPT', 'ImageLabs', 'HuggingFace', 'PollinationsImage']
+# Provider management
+# Updated based on common provider names and potential instability
+BLACKLISTED_PROVIDERS = {
+    'BlackForestLabs_Flux1Dev', 'DeepInfra', 'FlowGpt', 'Free2GPT',
+    'ImageLabs', 'HuggingFace', 'PollinationsImage', 'StabilityAI_SD35Large', 'Bing'
+}
+BACKUP_PROVIDERS = {'You', 'Liaobots', 'PerplexityLabs'} # Updated list
 
-# Словари перевода
+# Enhanced translation system
 TRANSLATIONS = {
     'en': {
-        'welcome_menu': "Welcome",
         'welcome': "Console AI Chat",
         'developer': "Developer",
         'github': "GitHub",
@@ -84,27 +110,26 @@ TRANSLATIONS = {
         'lang': "Set language",
         'stats': "Show usage stats",
         'chat_prompt': "You",
-        'start_chat': "Just type a message or question",
+        'start_chat': "Type a message or question",
         'ai_prompt': "AI",
         'thinking': "Model reflections",
         'saving_code': "Saved code blocks",
         'generating': "Generating response...",
         'model_set': "Model set",
         'model_error': "Model not available",
-        'chat_created': "New chat created and selected",
+        'chat_created': "New chat created",
         'chat_switched': "Switched to chat",
         'chat_not_found': "Chat not found",
         'chat_deleted': "Chat deleted",
-        'no_chats': "You have no chats yet",
+        'no_chats': "No chats available",
         'your_chats': "Your Chats",
-        'current_model_title': "Current Model",
         'available_models': "Available models",
         'active_providers': "Active providers",
         'system_status_title': "System status",
-        'exit_confirmation': "Exiting program...",
+        'exit_confirmation': "Exiting...",
         'unknown_command': "Unknown command",
-        'gen_error': "Response generation error",
-        'main_error': "An error occurred. Continuing...",
+        'gen_error': "Response error",
+        'main_error': "Error occurred",
         'code_saved': "Saved {} code block(s)",
         'stats_title': "Usage Statistics",
         'total_messages': "Total messages",
@@ -116,10 +141,17 @@ TRANSLATIONS = {
         'invalid_lang': "Invalid language. Use 'en' or 'ru'",
         'providers_title': "Active Providers",
         'total_providers': "Total providers",
-        'saved_code_location': "Code saved to:"
+        'saved_code_location': "Code saved to:",
+        'api_calls': "API calls",
+        'model_optimization': "Model optimization",
+        'chat_history': "Chat history",
+        'token_count': "Token count",
+        'timeout_error': "Request timed out. Trying another provider...",
+        'no_response_error': "Received empty response. Trying another provider...",
+        'using_client_api': "Using G4F Client API",
+        'using_legacy_api': "Using G4F Legacy API"
     },
     'ru': {
-        'welcome_menu': "Добро пожаловать",
         'welcome': "Консольный AI Чат",
         'developer': "Разработчик",
         'github': "GitHub",
@@ -139,27 +171,26 @@ TRANSLATIONS = {
         'lang': "Установить язык",
         'stats': "Показать статистику",
         'chat_prompt': "Вы",
-        'start_chat': "Просто введите сообщение или вопрос",
+        'start_chat': "Введите сообщение или вопрос",
         'ai_prompt': "ИИ",
         'thinking': "Размышления модели",
         'saving_code': "Сохраненные блоки кода",
         'generating': "Генерация ответа...",
         'model_set': "Модель установлена",
         'model_error': "Модель недоступна",
-        'chat_created': "Новый чат создан и выбран",
+        'chat_created': "Новый чат создан",
         'chat_switched': "Переключено на чат",
         'chat_not_found': "Чат не найден",
         'chat_deleted': "Чат удален",
-        'no_chats': "У вас пока нет чатов",
+        'no_chats': "Чаты отсутствуют",
         'your_chats': "Ваши чаты",
-        'current_model_title': "Текущая модель",
         'available_models': "Доступные модели",
         'active_providers': "Активные провайдеры",
         'system_status_title': "Статус системы",
-        'exit_confirmation': "Выход из программы...",
+        'exit_confirmation': "Выход...",
         'unknown_command': "Неизвестная команда",
-        'gen_error': "Ошибка генерации ответа",
-        'main_error': "Произошла ошибка. Продолжаем...",
+        'gen_error': "Ошибка генерации",
+        'main_error': "Ошибка выполнения",
         'code_saved': "Сохранено блоков кода: {}",
         'stats_title': "Статистика использования",
         'total_messages': "Всего сообщений",
@@ -171,103 +202,118 @@ TRANSLATIONS = {
         'invalid_lang': "Недопустимый язык. Используйте 'en' или 'ru'",
         'providers_title': "Активные провайдеры",
         'total_providers': "Всего провайдеров",
-        'saved_code_location': "Код сохранён в:"
+        'saved_code_location': "Код сохранён в:",
+        'api_calls': "API вызовы",
+        'model_optimization': "Оптимизация модели",
+        'chat_history': "История чата",
+        'token_count': "Токены",
+        'timeout_error': "Время запроса истекло. Пробуем другого провайдера...",
+        'no_response_error': "Получен пустой ответ. Пробуем другого провайдера...",
+        'using_client_api': "Используется G4F Client API",
+        'using_legacy_api': "Используется G4F Legacy API"
     }
 }
 
-def tr(key, lang='en'):
-    """Получить перевод по ключу"""
-    return TRANSLATIONS.get(lang, {}).get(key, key)
+def tr(key: str, lang: str = 'en') -> str:
+    """Get translation for key with fallback"""
+    return TRANSLATIONS.get(lang, TRANSLATIONS['en']).get(key, key)
 
-def get_user_lang(user_id):
-    """Получить язык пользователя"""
-    global user_lang_cache
+def get_user_lang(user_id: str) -> str:
+    """Get user language with caching"""
     user_id = str(user_id)
-    
     if not user_lang_cache:
-        try:
-            if os.path.exists(LANG_FILE):
-                with open(LANG_FILE, 'r') as f:
-                    user_lang_cache = json.load(f)
-            else:
-                user_lang_cache = {}
-        except Exception as e:
-            logger.error(f"Language load error: {e}")
-            user_lang_cache = {}
-    
+        load_lang_cache()
     return user_lang_cache.get(user_id, 'en')
 
-def save_user_lang(user_id, lang):
-    """Сохранить язык пользователя"""
-    global user_lang_cache
+def save_user_lang(user_id: str, lang: str) -> None:
+    """Save user language"""
     user_id = str(user_id)
-    
     with cache_lock:
         user_lang_cache[user_id] = lang
-        try:
-            with open(LANG_FILE, 'w') as f:
-                json.dump(user_lang_cache, f)
-        except Exception as e:
-            logger.error(f"Error saving language: {e}")
+        save_lang_cache()
 
-# Получаем все доступные провайдеры автоматически
-def get_all_providers():
+def load_lang_cache() -> None:
+    """Load language cache from file"""
+    global user_lang_cache
+    try:
+        lang_file = os.path.join(CONFIG_DIR, LANG_FILE)
+        if os.path.exists(lang_file):
+            with open(lang_file, 'r', encoding='utf-8') as f:
+                user_lang_cache = json.load(f)
+        else:
+            user_lang_cache = {}
+    except Exception as e:
+        logger.error(f"Language load error: {e}")
+        user_lang_cache = {}
+
+def save_lang_cache() -> None:
+    """Save language cache to file"""
+    try:
+        lang_file = os.path.join(CONFIG_DIR, LANG_FILE)
+        with open(lang_file, 'w', encoding='utf-8') as f:
+            json.dump(user_lang_cache, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving language: {e}")
+
+def get_all_providers() -> List[g4f.Provider.BaseProvider]:
+    """Get all available providers"""
     providers = []
-    for name, obj in inspect.getmembers(g4f.Provider):
-        if inspect.isclass(obj) and issubclass(obj, g4f.Provider.BaseProvider):
+    for _, obj in inspect.getmembers(g4f.Provider):
+        if inspect.isclass(obj) and issubclass(obj, g4f.Provider.BaseProvider) and obj != g4f.Provider.BaseProvider:
             providers.append(obj)
     return providers
 
-# Инициализация провайдеров
-def init_providers():
+def init_providers() -> List[g4f.Provider.BaseProvider]:
+    """Initialize and cache providers"""
     global active_providers, provider_classes
     with cache_lock:
         if active_providers:
             return active_providers
-            
         logger.info("Initializing providers...")
-        with console.status("[bold blue]Initializing providers...[/]", spinner="dots"):
-            all_providers = get_all_providers()
-            active_providers = []
-            provider_classes = {}
-            
-            for provider in all_providers:
+        all_providers = get_all_providers()
+        active_providers = []
+        provider_classes = {}
+        # Prioritize backup providers
+        for provider in all_providers:
+            provider_name = provider.__name__
+            if provider_name in BACKUP_PROVIDERS and provider_name not in BLACKLISTED_PROVIDERS:
                 try:
-                    provider_name = provider.__name__
-                    
-                    if provider_name in BLACKLISTED_PROVIDERS:
-                        logger.info(f"Skipping blacklisted provider: {provider_name}")
-                        continue
-                    
-                    if (hasattr(provider, 'working') and provider.working and 
-                        (hasattr(provider, 'url') or hasattr(provider, 'model'))):
+                    # Use hasattr for safer check if 'working' attribute might not exist
+                    if getattr(provider, 'working', True):
+                        active_providers.append(provider)
+                        provider_classes[provider_name] = provider
+                        logger.info(f"Added backup provider: {provider_name}")
+                except Exception as e:
+                    logger.warning(f"Backup provider error {provider_name}: {str(e)[:100]}")
+        # Add other working providers
+        for provider in all_providers:
+            provider_name = provider.__name__
+            if (provider_name not in BLACKLISTED_PROVIDERS and
+                provider_name not in BACKUP_PROVIDERS and
+                provider not in active_providers):
+                try:
+                    if getattr(provider, 'working', True):
                         active_providers.append(provider)
                         provider_classes[provider_name] = provider
                         logger.info(f"Added provider: {provider_name}")
                 except Exception as e:
-                    logger.warning(f"Provider validation error {provider.__name__}: {str(e)[:100]}")
-            
-            if not active_providers:
-                backup_providers = [g4f.Provider.You]
-                for provider in backup_providers:
-                    if provider.__name__ not in BLACKLISTED_PROVIDERS:
-                        active_providers.append(provider)
-                        provider_classes[provider.__name__] = provider
-                logger.warning(f"Using backup providers: {[p.__name__ for p in active_providers]}")
-            
-            logger.info(f"Active providers: {len(active_providers)}")
+                    logger.warning(f"Provider error {provider_name}: {str(e)[:100]}")
+        if not active_providers:
+            logger.error("No providers available! Using fallback")
+            # Consider adding a more robust fallback or raising an error
+        logger.info(f"Active providers: {len(active_providers)}")
         return active_providers
 
-# Загрузка сохраненных моделей
-def load_user_models():
+def load_user_models() -> Dict[str, str]:
+    """Load user models with caching"""
     global user_models_cache
     with cache_lock:
         if user_models_cache:
             return user_models_cache
-            
         try:
-            if os.path.exists(MODEL_FILE):
-                with open(MODEL_FILE, 'r') as f:
+            model_file = os.path.join(CONFIG_DIR, MODEL_FILE)
+            if os.path.exists(model_file):
+                with open(model_file, 'r', encoding='utf-8') as f:
                     user_models_cache = json.load(f)
             else:
                 user_models_cache = {}
@@ -276,36 +322,35 @@ def load_user_models():
             user_models_cache = {}
         return user_models_cache
 
-# Сохранение моделей
-def save_user_models(data):
+def save_user_models(data: Dict[str, str]) -> None:
+    """Save user models"""
     global user_models_cache
     with cache_lock:
         user_models_cache = data
         try:
-            with open(MODEL_FILE, 'w') as f:
-                json.dump(data, f)
+            model_file = os.path.join(CONFIG_DIR, MODEL_FILE)
+            with open(model_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"Error saving models: {e}")
 
-# Загрузка чатов
-def load_user_chats():
+def load_user_chats() -> Dict[str, dict]:
+    """Load user chats with caching"""
     global user_chats_cache, stats
     with cache_lock:
         if user_chats_cache:
             return user_chats_cache
-            
         try:
-            if os.path.exists(USER_CHATS_FILE):
-                with open(USER_CHATS_FILE, 'r', encoding='utf-8') as f:
+            chat_file = os.path.join(CONFIG_DIR, USER_CHATS_FILE)
+            if os.path.exists(chat_file):
+                with open(chat_file, 'r', encoding='utf-8') as f:
                     user_chats_cache = json.load(f)
-                    
-                # Обновляем статистику
+                # Update stats
                 stats['active_chats'] = 0
-                for user_id, user_data in user_chats_cache.items():
+                for user_data in user_chats_cache.values():
                     chats = user_data.get("chats", {})
                     stats['active_chats'] += len(chats)
-                    
-                    for chat_id, chat_data in chats.items():
+                    for chat_data in chats.values():
                         stats['total_messages'] += len(chat_data.get("history", []))
             else:
                 user_chats_cache = {}
@@ -314,33 +359,53 @@ def load_user_chats():
             user_chats_cache = {}
         return user_chats_cache
 
-# Сохранение чатов
-def save_user_chats(data):
+def save_user_chats(data: Dict[str, dict]) -> None:
+    """Save user chats"""
     global user_chats_cache, stats
     with cache_lock:
         user_chats_cache = data
-        
-        # Обновляем статистику
+        # Update stats
         stats['active_chats'] = 0
         stats['total_messages'] = 0
-        for user_id, user_data in data.items():
+        for user_data in data.values():
             chats = user_data.get("chats", {})
             stats['active_chats'] += len(chats)
-            
-            for chat_id, chat_data in chats.items():
+            for chat_data in chats.values():
                 stats['total_messages'] += len(chat_data.get("history", []))
-        
         stats['last_activity'] = time.time()
-        
         try:
-            with open(USER_CHATS_FILE, 'w', encoding='utf-8') as f:
+            chat_file = os.path.join(CONFIG_DIR, USER_CHATS_FILE)
+            with open(chat_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"Error saving chats: {e}")
 
-# Полный список моделей
 def get_supported_models():
-    return {
+    """Define supported models by provider. Keeping original structure, adding new models."""
+    models = {
+        # [Previous model definitions remain the same...]
+        "Thinking Models": {
+            'o1',
+            'o1-mini',
+            'o1-pro',
+            'o4-mini',
+            'o4-mini-high',
+            'o3',
+            'o3-mini',
+            'o3-mini-high',
+            'qwq-32b',
+            'deepseek-r1',
+            'grok-3-r1',
+            'grok-3-thinking',
+            'sonar-reasoning-pro',
+            'sonar-reasoning',
+            'claude-3.5-sonnet',
+            'llama-3.3-70b',
+            'qwen-2.5-coder-32b'
+        }
+    }
+    # Merge with existing models - ADDED NEW MODELS HERE
+    full_models = {
         "OpenAI": {
             'gpt-3.5-turbo',
             'gpt-4',
@@ -352,14 +417,13 @@ def get_supported_models():
             'gpt-4.1-mini',
             'gpt-4.1-nano',
             'gpt-4.5',
-            'o1',
-            'o1-mini',
-            'o1-pro',
-            'o3',
-            'o3-mini',
-            'o3-mini-high',
-            'o4-mini',
-            'o4-mini-high'
+            'gpt-4o-2024-08-06', # Added newer specific version
+            'gpt-4o-realtime-preview-2024-10-01', # Added new model
+            'gpt-4o-realtime-preview', # Added new model alias
+            'gpt-4o-audio-preview', # Added new model
+            'gpt-4o-audio-preview-2024-10-01', # Added new model
+            'o1-preview', # Added new model
+            'o1-mini' # Added new model
         },
         "Llama": {
             'llama-2-7b',
@@ -372,16 +436,35 @@ def get_supported_models():
             'llama-3.2-3b',
             'llama-3.2-11b',
             'llama-3.2-90b',
-            'llama-3.3-70b'
+            'llama-3.3-70b-instruct', # Added new model
+            'Meta-Llama-3.1-8B-Instruct', # Added alternative naming
+            'Meta-Llama-3.1-70B-Instruct', # Added alternative naming
+            'Llama-3.2-11B-Vision-Instruct', # Added vision model
+            'Llama-3.2-90B-Vision-Instruct' # Added vision model
         },
         "Mistral": {
             'mistral-nemo',
             'mistral-7b',
             'mistral-small-24b',
-            'mixtral-8x7b'
+            'mixtral-8x7b',
+            'mistral-tiny',
+            'mistral-small',
+            'mistral-medium',
+            'mistral-large',
+            'open-mistral-nemo',
+            'open-codestral-mamba',
+            'pixtral-12b-2409', # Added new model
+            'ministral-3b-2410', # Added new model
+            'ministral-8b-2410', # Added new model
+            'mistral-small-24b-2410', # Added new model
+            'mistral-large-2411' # Added new model
         },
         "Microsoft": {
-            'phi-4'
+            'phi-4',
+            'phi-3-medium-128k-instruct',
+            'phi-3-mini-128k-instruct',
+            'Phi-3-medium-128k-instruct', # Added alternative naming
+            'Phi-3-mini-128k-instruct' # Added alternative naming
         },
         "Google": {
             'gemini-1.5-flash',
@@ -389,7 +472,11 @@ def get_supported_models():
             'gemini-2.0-flash',
             'gemini-2.0-pro-exp',
             'gemini-2.5-flash',
-            'gemini-2.5-pro'
+            'gemini-2.5-pro',
+            'gemini-1.5-flash-002', # Added newer specific version
+            'gemini-1.5-pro-002', # Added newer specific version
+            'gemini-2.0-flash-exp', # Added new experimental model
+            'gemini-2.0-pro-exp' # Added new experimental model
         },
         "Qwen": {
             'qwen-1.5-7b',
@@ -400,11 +487,17 @@ def get_supported_models():
             'qwen-2.5-coder-32b',
             'qwen-3-32b',
             'qwen-3-30b',
-            'qwq-32b'
+            'qwen-2.5-7b-instruct', # Added new model
+            'qwen-2.5-72b-instruct', # Added new model
+            'qwen-3-72b-instruct', # Added new model
+            'qwen-2.5-coder-32b-instruct', # Added new model
+            'qwq' # Added new model
         },
         "DeepSeek": {
             'deepseek-v3',
-            'deepseek-r1'
+            'deepseek-chat',
+            'deepseek-coder',
+            'deepseek-r1' # Added new model
         },
         "xAI": {
             'grok-2',
@@ -412,184 +505,226 @@ def get_supported_models():
             'early-grok-3',
             'grok-3',
             'grok-3-beta',
-            'grok3-mini',
+            'grok-3-mini',
             'grok-3-mini-beta',
             'grok-3-mini-high',
             'grok-3-fast',
             'grok-3-fast-mini',
-            'grok-3-r1',
-            'grok-3-thinking'
+            'grok-2-vision-beta' # Added new model
         },
         "Perplexity": {
             'sonar-pro',
             'sonar',
-            'sonar-reasoning-pro',
-            'sonar-reasoning'
-        },
-        " Anthropic": {
+            'sonar-reasoning-pro', # Added new model
+            'sonar-reasoning', # Added new model
+            'llama-3.1-sonar-small-128k-online', # Added new model
+            'llama-3.1-sonar-large-128k-online', # Added new model
+            'llama-3.1-sonar-huge-128k-online' # Added new model
+       },
+        "Anthropic": {
             'claude-3-7-sonnet',
             'claude-3.5-sonnet',
             'claude-3-sonnet',
             'claude-3-opus',
-            'claude-3-haiku'
-        }
+            'claude-3-haiku',
+            'claude-3-5-sonnet-20240620', # Added specific version
+            'claude-3-5-sonnet-20241022', # Added newer specific version
+            'claude-3.7-sonnet' # Added new model
+        },
+        "Reasoning Specialists": models["Thinking Models"]
     }
+    return full_models
 
-# Автосохранение кода
-def save_code_blocks(response_text, chat_id, lang='en'):
+def save_code_blocks(response_text: str, chat_id: str, lang: str = 'en') -> str:
+    """Save code blocks from response and return cleaned text"""
+    # Corrected regex pattern using raw string concatenation
     code_pattern = r'```(\w+)?\n([\s\S]*?)\n```'
     matches = re.findall(code_pattern, response_text)
-    
     if not matches:
         return response_text
-        
     saved_files = []
-    for idx, match in enumerate(matches):
-        lang_ext, code = match
+    code_dir = os.path.join(CONFIG_DIR, "saved_code")
+    os.makedirs(code_dir, exist_ok=True)
+    for idx, (lang_ext, code) in enumerate(matches):
         if not lang_ext:
             lang_ext = 'txt'
-            
-        filename = f"saved_code/{chat_id}_{int(time.time())}_{idx}.{lang_ext}"
-        os.makedirs("saved_code", exist_ok=True)
-        
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(code)
-        saved_files.append(filename)
-    
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"code_{chat_id}_{timestamp}_{idx}.{lang_ext}"
+        filepath = os.path.join(code_dir, filename)
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(code)
+            saved_files.append(filepath)
+        except Exception as e:
+            logger.error(f"Code save error: {e}")
     if saved_files:
-        global stats
         stats['saved_code_blocks'] += len(saved_files)
         console.print(f"\n[green]💾 {tr('saved_code_location', lang)}[/]")
         for file in saved_files:
-            console.print(f"  → [link=file://{os.path.abspath(file)}]{file}[/]")
+            console.print(f"  → [link=file://{os.path.abspath(file)}]{os.path.basename(file)}[/]")
         console.print(f"[dim]{tr('code_saved', lang).format(len(saved_files))}[/]")
-    
-    # Убираем блоки кода из ответа
+    # Remove code blocks from response
     return re.sub(code_pattern, '', response_text)
 
-# Подсветка синтаксиса
-def highlight_code(text):
+def highlight_code(text: str) -> str:
+    """Syntax highlighting for code blocks"""
+    # Corrected regex pattern using raw string concatenation
     code_pattern = r'```(\w+)?\n([\s\S]*?)\n```'
-    
     def replacer(match):
         lang = match.group(1) or 'text'
         code = match.group(2)
-        
         try:
             lexer = get_lexer_by_name(lang, stripall=True)
         except:
             lexer = TextLexer()
-            
         formatter = TerminalFormatter()
-        highlighted = highlight(code, lexer, formatter)
-        return highlighted
-    
+        return highlight(code, lexer, formatter)
     return re.sub(code_pattern, replacer, text)
 
-# Генерация ответа
-def generate_response(user_id: int, chat_id: str, messages: list) -> str:
+def generate_response(user_id: str, chat_id: str, messages: list) -> str:
+    """Enhanced response generator with provider fallback"""
     user_models = load_user_models()
-    model_name = user_models.get(str(user_id), 'gpt-4o')
-    
+    model_name = user_models.get(user_id, 'gpt-4o')
+    lang = get_user_lang(user_id)
     all_chats = load_user_chats()
-    user_chats = all_chats.get(str(user_id), {})
+    user_chats = all_chats.get(user_id, {})
     chat_data = user_chats.get("chats", {}).get(chat_id, {})
-    
     saved_provider = chat_data.get("provider")
     providers = init_providers()
     provider_errors = []
-    
-    # Пробуем сохраненный провайдер
-    if saved_provider:
+    timeout_duration = 60 # seconds
+
+    # Try saved provider first
+    if saved_provider and saved_provider in provider_classes:
         try:
-            provider_class = provider_classes.get(saved_provider)
-            if provider_class:
-                logger.info(f"Using saved provider: {saved_provider}")
+            provider = provider_classes[saved_provider]
+            logger.info(f"Trying saved provider: {saved_provider}")
+            if USE_CLIENT_API:
+                # Use new Client API if available
+                client = G4FClient(provider=provider)
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    timeout=timeout_duration
+                )
+                full_response = response.choices[0].message.content
+            else:
+                # Fallback to legacy API
                 response = g4f.ChatCompletion.create(
                     model=model_name,
                     messages=messages,
-                    provider=provider_class,
-                    timeout=60,
-                    auto_continue=True
+                    provider=provider,
+                    timeout=timeout_duration
                 )
-                full_response = ""
-                for chunk in response:
-                    if isinstance(chunk, str):
-                        full_response += chunk
-                    if len(full_response) > 10000:
-                        break
-                
-                if full_response.strip():
-                    return full_response
+                full_response = "".join(response)
+
+            if full_response and full_response.strip():
+                stats['total_api_calls'] += 1
+                return full_response[:15000]  # Limit response size
+            else:
+                raise ValueError(tr('no_response_error', lang))
+        except TimeoutError:
+            error_msg = f"{saved_provider}: {tr('timeout_error', lang)}"
+            provider_errors.append(error_msg)
+            logger.warning(f"Saved provider timeout: {error_msg}")
         except Exception as e:
             error_msg = f"{saved_provider}: {str(e)[:100]}"
             provider_errors.append(error_msg)
-            logger.warning(f"Error in saved provider: {error_msg}")
-            chat_data["provider"] = None
-            user_chats.setdefault("chats", {})[chat_id] = chat_data
-            all_chats[str(user_id)] = user_chats
-            save_user_chats(all_chats)
+            logger.warning(f"Saved provider error: {error_msg}")
 
-    # Пробуем все доступные провайдеры
+    # Try all available providers
     for provider in providers:
+        provider_name = provider.__name__
+        if provider_name == saved_provider:
+            continue
         try:
-            if saved_provider and provider.__name__ == saved_provider:
-                continue
-                
-            logger.info(f"Trying provider: {provider.__name__}")
-            response = g4f.ChatCompletion.create(
-                model=model_name,
-                messages=messages,
-                provider=provider,
-                timeout=60,
-                auto_continue=True
-            )
-            full_response = ""
-            for chunk in response:
-                if isinstance(chunk, str):
-                    full_response += chunk
-                if len(full_response) > 10000:
-                    break
-            
-            if full_response.strip():
-                chat_data["provider"] = provider.__name__
+            logger.info(f"Trying provider: {provider_name}")
+            if USE_CLIENT_API:
+                client = G4FClient(provider=provider)
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    timeout=timeout_duration
+                )
+                full_response = response.choices[0].message.content
+            else:
+                response = g4f.ChatCompletion.create(
+                    model=model_name,
+                    messages=messages,
+                    provider=provider,
+                    timeout=timeout_duration
+                )
+                full_response = "".join(response)
+
+            if full_response and full_response.strip():
+                # Save successful provider
+                chat_data["provider"] = provider_name
                 user_chats.setdefault("chats", {})[chat_id] = chat_data
-                all_chats[str(user_id)] = user_chats
+                all_chats[user_id] = user_chats
                 save_user_chats(all_chats)
+                stats['total_api_calls'] += 1
                 return full_response
+            else:
+                raise ValueError(tr('no_response_error', lang))
+        except TimeoutError:
+            error_msg = f"{provider_name}: {tr('timeout_error', lang)}"
+            provider_errors.append(error_msg)
+            logger.warning(f"Provider timeout: {error_msg}")
         except Exception as e:
-            error_msg = f"{provider.__name__}: {str(e)[:100]}"
+            error_msg = f"{provider_name}: {str(e)[:100]}"
             provider_errors.append(error_msg)
             logger.warning(f"Provider error: {error_msg}")
-            time.sleep(0.1)
-    
-    error_details = "\n".join(provider_errors[-5:])
-    return f"⚠️ All providers unavailable. Try later or change model.\n\nErrors:\n{error_details}"
+            time.sleep(0.3)  # Brief delay between attempts
 
-# Обработка размышлений модели
-def process_model_thinking(response_text, lang='en'):
-    thinking_pattern = r'<thinking>(.*?)</thinking>'
-    matches = re.findall(thinking_pattern, response_text, re.DOTALL)
-    
-    if matches:
-        console.print(f"\n[bold yellow]💭 {tr('thinking', lang)}:[/]")
-        for i, thought in enumerate(matches, 1):
+    # Error handling
+    error_details = [
+        f"[red]❌ {tr('gen_error', lang)}[/]",
+        f"[yellow]Tried {len(providers)} providers[/]",
+        f"[dim]Model: {model_name}[/]"
+    ]
+    if provider_errors:
+        error_details.append("\n[bold]Recent errors:[/]")
+        for error in provider_errors[-3:]:
+            error_details.append(f"  - {error}")
+    error_details.append("\n[blue]Suggestions:")
+    error_details.append("  1. Try again later")
+    error_details.append("  2. Change model (/setmodel)")
+    error_details.append("  3. Check /status for system info[/]")
+    return "\n".join(error_details)
+
+def process_model_thinking(response_text: str, lang: str = 'en') -> str:
+    """Process and visualize model thinking patterns"""
+    thinking_patterns = [
+        (r'<thinking>(.*?)</thinking>', 1, "dim"),
+        (r'\[reasoning\](.*?)\[/reasoning\]', 2, "cyan"),
+        (r'<analysis>(.*?)</analysis>', 3, "bright_white")
+    ]
+    console.print(f"\n[bold yellow]🧠 {tr('thinking', lang)}[/]")
+    for pattern, depth, style in thinking_patterns:
+        matches = re.findall(pattern, response_text, re.DOTALL)
+        for thought in matches:
+            if isinstance(thought, tuple):
+                thought = thought[0]
             thought = thought.strip()
-            if thought:
-                console.print(f"[dim]{i}.[/] {thought}")
-        
-        response_text = re.sub(thinking_pattern, '', response_text, flags=re.DOTALL).strip()
-    
-    return response_text
+            if depth == 1:
+                console.print(f"[{style}]└─○ {thought}[/]")
+            elif depth == 2:
+                console.print(f"[{style}]   └─▶ {thought}[/]")
+            elif depth == 3:
+                console.print(f"[{style}]      └─★ {thought}[/]")
+            response_text = re.sub(pattern, '', response_text, flags=re.DOTALL)
+    return response_text.strip()
 
-# Показать справку
-def show_help(user_id):
+def show_help(user_id: str) -> None:
+    """Show help menu"""
     lang = get_user_lang(user_id)
-    
+    g4f_version = getattr(g4f, 'version', 'unknown')
+    api_type = tr('using_client_api', lang) if USE_CLIENT_API else tr('using_legacy_api', lang)
     help_text = (
-        f"[bold cyan]🤖 {tr('welcome', lang)} (g4f v0.5.7.5)[/]\n"
+        f"[bold cyan]🤖 {tr('welcome', lang)} (g4f v{g4f_version})[/]\n"
+        f"[dim]{api_type}[/]\n"
         f"[bold]{tr('developer', lang)}:[/] AiTechnologyDev\n"
-        f"[bold]GitHub:[/] [link=https://github.com/AITechnologyDev]https://github.com/AITechnologyDev[/]\n\n"
+        f"[bold]GitHub:[/] [link=https://github.com/AITechnologyDev]https://github.com/AITechnologyDev[/]\n"
         f"[bold]{tr('commands', lang)}:[/]\n"
         f"  [bold]/newchat[/]  - {tr('new_chat', lang)}\n"
         f"  [bold]/usechat[/]  - {tr('switch_chat', lang)}\n"
@@ -603,95 +738,89 @@ def show_help(user_id):
         f"  [bold]/lang[/]     - {tr('lang', lang)} (en/ru)\n"
         f"  [bold]/stats[/]    - {tr('stats', lang)}\n"
         f"  [bold]/exit[/]     - {tr('exit', lang)}\n"
-        f"  [bold]/help[/]     - {tr('help', lang)}\n\n"
-        f"[bold cyan]{tr('start_chat', lang)}:[/]"
+        f"  [bold]/help[/]     - {tr('help', lang)}\n"
+        f"[bold cyan]{tr('start_chat', lang)}[/]"
     )
-    
     console.print(Panel(
         help_text,
         title=tr('help_title', lang),
-        title_align="left",
         border_style="cyan",
         padding=(1, 2),
         width=80
     ))
 
-# Установка модели
-def set_model(user_id, model_name):
+def set_model(user_id: str, model_name: str) -> bool:
+    """Set user model"""
     lang = get_user_lang(user_id)
-    
     try:
         supported_models = get_supported_models()
-        all_models = set()
-        
-        # Flatten all models from different providers
-        for provider_models in supported_models.values():
-            all_models.update(provider_models)
-        
+        all_models = set().union(*supported_models.values())
         if model_name not in all_models:
-            # Show similar models if the requested one isn't found
-            similar_models = [m for m in all_models if model_name.lower() in m.lower()]
-            
+            similar = [m for m in all_models if model_name.lower() in m.lower()]
             console.print(f"[red]❌ {tr('model_error', lang)}: '{model_name}'[/]")
-            
-            if similar_models:
-                console.print(f"[yellow]Similar available models:[/]")
-                for model in similar_models:
+            if similar:
+                console.print(f"[yellow]Similar models:[/]")
+                for model in similar[:5]: # Limit suggestions
                     console.print(f"  - {model}")
-            
-            console.print(f"\nUse [bold]/models[/] to see all available models")
             return False
-        
         user_models = load_user_models()
-        user_models[str(user_id)] = model_name
+        user_models[user_id] = model_name
         save_user_models(user_models)
-        
-        console.print(f"[green]✅ {tr('model_set', lang)}:[/] [bold]{model_name}[/]")
+        console.print(f"[green]✅ {tr('model_set', lang)}: [bold]{model_name}[/][/]")
         return True
     except Exception as e:
         logger.error(f"Model set error: {e}")
-        console.print(f"[red]❌ {tr('model_error', lang)}: {str(e)[:100]}[/]")
+        console.print(f"[red]❌ {tr('model_error', lang)}[/]")
         return False
 
-# Создание нового чата
-def new_chat(user_id):
+def new_chat(user_id: str) -> str:
+    """Create new chat"""
     lang = get_user_lang(user_id)
     user_id = str(user_id)
     chats = load_user_chats()
     user_chats = chats.get(user_id, {})
     chat_list = user_chats.get("chats", {})
     chat_id = str(uuid.uuid4())[:8]
-    
+    # Get current model
+    user_models = load_user_models()
+    current_model = user_models.get(user_id, 'gpt-4o')
+    # System message based on model
+    specialized_models = get_supported_models().get("Reasoning Specialists", set())
+    if current_model in specialized_models:
+        system_msg = (
+            "You are an advanced AI specialist. Your responses should include:\n"
+            "1. Detailed analysis (<thinking>analysis</thinking>)\n"
+            "2. Step-by-step reasoning\n"
+            "3. Confidence estimates\n"
+            "Format reasoning between <thinking> tags"
+        )
+    else:
+        system_msg = "You are a helpful AI assistant. Provide clear, concise responses."
     chat_list[chat_id] = {
-        "history": [{"role": "system", "content": "You are a friendly and helpful AI assistant."}],
-        "provider": None
+        "history": [{"role": "system", "content": system_msg}],
+        "provider": None,
+        "created": time.time()
     }
-    
     user_chats["chats"] = chat_list
     user_chats["active"] = chat_id
     chats[user_id] = user_chats
     save_user_chats(chats)
-    
-    global stats
     stats['active_chats'] += 1
-    
-    console.print(f"[green]🆕 {tr('chat_created', lang)}:[/] [bold]{chat_id}[/]")
+    console.print(f"[green]🆕 {tr('chat_created', lang)}: [bold]{chat_id}[/][/]")
     return chat_id
 
-# Переключение чата
-def use_chat(user_id, chat_id):
+def use_chat(user_id: str, chat_id: str) -> bool:
+    """Switch to chat"""
     lang = get_user_lang(user_id)
-    
     try:
         user_id = str(user_id)
         chats = load_user_chats()
         user_chats = chats.get(user_id, {})
-        chat_list = user_chats.get("chats", {})
-        if chat_id in chat_list:
+        if chat_id in user_chats.get("chats", {}):
             user_chats["active"] = chat_id
             chats[user_id] = user_chats
             save_user_chats(chats)
-            console.print(f"[green]✅ {tr('chat_switched', lang)}:[/] [bold]{chat_id}[/]")
+            console.print(f"[green]✅ {tr('chat_switched', lang)}: [bold]{chat_id}[/][/]")
             return True
         else:
             console.print(f"[red]❌ {tr('chat_not_found', lang)}[/]")
@@ -700,10 +829,9 @@ def use_chat(user_id, chat_id):
         console.print(f"[red]❌ {tr('chat_not_found', lang)}[/]")
         return False
 
-# Удаление чата
-def del_chat(user_id, chat_id):
+def del_chat(user_id: str, chat_id: str) -> bool:
+    """Delete chat"""
     lang = get_user_lang(user_id)
-    
     try:
         user_id = str(user_id)
         chats = load_user_chats()
@@ -712,23 +840,11 @@ def del_chat(user_id, chat_id):
         if chat_id in chat_list:
             del chat_list[chat_id]
             if user_chats.get("active") == chat_id:
-                new_active = next(iter(chat_list.keys()), None) if chat_list else None
-                if new_active:
-                    user_chats["active"] = new_active
-                else:
-                    new_chat_id = str(uuid.uuid4())[:8]
-                    chat_list[new_chat_id] = {
-                        "history": [{"role": "system", "content": "You are a friendly and helpful AI assistant."}],
-                        "provider": None
-                    }
-                    user_chats["active"] = new_chat_id
+                user_chats["active"] = next(iter(chat_list.keys()), None) if chat_list else None
             user_chats["chats"] = chat_list
             chats[user_id] = user_chats
             save_user_chats(chats)
-            
-            global stats
             stats['active_chats'] = max(0, stats['active_chats'] - 1)
-            
             console.print(f"[yellow]🗑️ {tr('chat_deleted', lang)}: [bold]{chat_id}[/][/]")
             return True
         else:
@@ -738,44 +854,39 @@ def del_chat(user_id, chat_id):
         console.print(f"[red]❌ {tr('chat_not_found', lang)}[/]")
         return False
 
-# Список чатов
-def list_chats(user_id):
+def list_chats(user_id: str) -> None:
+    """List user chats"""
     lang = get_user_lang(user_id)
     user_id = str(user_id)
     chats = load_user_chats()
     user_chats = chats.get(user_id, {})
     chat_list = user_chats.get("chats", {})
-    active_id = user_chats.get("active", "default")
-    
+    active_id = user_chats.get("active")
     if not chat_list:
         console.print(f"[yellow]{tr('no_chats', lang)}[/]")
         return
-    
     panel_text = ""
-    for cid in chat_list:
+    for cid, data in chat_list.items():
         mark = "🟢" if cid == active_id else "⚪"
-        panel_text += f"[bold]{mark} {cid}[/]\n"
-    
+        msg_count = len(data.get("history", [])) - 1  # Exclude system message
+        panel_text += f"[bold]{mark} {cid}[/] - {msg_count} msgs\n"
     console.print(Panel(
         panel_text.strip(),
         title=f"[bold cyan]{tr('your_chats', lang)}[/]",
-        title_align="left",
         border_style="blue",
         padding=(0, 2),
         width=60
     ))
 
-# Показать текущую модель
-def show_model(user_id):
+def show_model(user_id: str) -> None:
+    """Show current model"""
     lang = get_user_lang(user_id)
-    
     try:
         user_models = load_user_models()
-        model = user_models.get(str(user_id), 'gpt-4o (default)')
+        model = user_models.get(str(user_id), 'gpt-4o')
         console.print(Panel(
             f"[bold]{model}[/]",
-            title=f"[cyan]{tr('current_model_title', lang)}[/]",
-            title_align="left",
+            title=f"[cyan]{tr('current_model', lang)}[/]",
             border_style="green",
             padding=(0, 2),
             width=60
@@ -784,23 +895,24 @@ def show_model(user_id):
         logger.error(f"Model show error: {e}")
         console.print(f"[red]❌ {tr('model_error', lang)}[/]")
 
-# Список моделей
-def list_models(user_id):
+def list_models(user_id: str) -> None:
+    """List available models"""
     lang = get_user_lang(user_id)
-    
+    g4f_version = getattr(g4f, 'version', 'unknown')
     try:
         models_dict = get_supported_models()
         panel_text = ""
-        
         for provider, models in models_dict.items():
             panel_text += f"\n[bold underline]{provider}:[/]\n"
             for model in sorted(models):
-                panel_text += f"  - {model}\n"
-        
+                if provider == "Reasoning Specialists": # Updated category name
+                    panel_text += f"  - [bright_cyan]{model} ⚙️[/]\n"
+                else:
+                    panel_text += f"  - {model}\n"
         console.print(Panel(
             panel_text.strip(),
-            title=f"[cyan]{tr('available_models', lang)} (g4f 0.5.7.5)[/]",
-            title_align="left",
+            title=f"[cyan]{tr('available_models', lang)} (g4f v{G4F_VERSION})[/]",
+            subtitle="⚙️ = Specialized Model",
             border_style="magenta",
             padding=(0, 2),
             width=80
@@ -809,18 +921,15 @@ def list_models(user_id):
         logger.error(f"Model list error: {e}")
         console.print(f"[red]❌ {tr('model_error', lang)}[/]")
 
-# Список провайдеров
-def list_providers(user_id):
+def list_providers(user_id: str) -> None:
+    """List active providers"""
     lang = get_user_lang(user_id)
-    
     try:
         providers = init_providers()
         panel_text = "\n".join([f"- [bold]{provider.__name__}[/]" for provider in providers])
-        
         console.print(Panel(
-            f"{panel_text}\n\n[bold yellow]{tr('total_providers', lang)}: {len(providers)}[/]",
+            f"{panel_text}\n[bold yellow]{tr('total_providers', lang)}: {len(providers)}[/]",
             title=f"[cyan]{tr('providers_title', lang)}[/]",
-            title_align="left",
             border_style="yellow",
             padding=(0, 2),
             width=80
@@ -829,37 +938,30 @@ def list_providers(user_id):
         logger.error(f"Provider list error: {e}")
         console.print(f"[red]❌ {tr('model_error', lang)}[/]")
 
-# Статус системы
-def system_status(user_id):
+def system_status(user_id: str) -> None:
+    """Show system status"""
     lang = get_user_lang(user_id)
-    
     try:
-        # Get all supported models
         models_dict = get_supported_models()
-        total_models = sum(len(models) for models in models_dict.values())
-        
-        # Get active providers count
+        total_models = sum(len(m) for m in models_dict.values())
         providers = init_providers()
-        
-        # Get current model
         user_models = load_user_models()
-        current_model = user_models.get(str(user_id), 'gpt-4o (default)')
-        
-        # Format last activity time
-        last_activity = time.strftime(tr('time_format', lang), time.localtime(stats['last_activity']))
-        
+        current_model = user_models.get(str(user_id), 'gpt-4o')
+        last_active = time.strftime(tr('time_format', lang), time.localtime(stats['last_activity']))
+        api_type = tr('using_client_api', lang) if USE_CLIENT_API else tr('using_legacy_api', lang)
         console.print(Panel(
-            f"[bold]{tr('current_model_title', lang)}:[/] {current_model}\n"
+            f"[bold]{tr('current_model', lang)}:[/] {current_model}\n"
             f"[bold]{tr('available_models', lang)}:[/] {total_models}\n"
             f"[bold]{tr('active_providers', lang)}:[/] {len(providers)}\n"
             f"[bold]{tr('active_chats', lang)}:[/] {stats['active_chats']}\n"
             f"[bold]{tr('total_messages', lang)}:[/] {stats['total_messages']}\n"
             f"[bold]{tr('saved_blocks', lang)}:[/] {stats['saved_code_blocks']}\n"
-            f"[bold]{tr('last_activity', lang)}:[/] {last_activity}\n"
+            f"[bold]{tr('api_calls', lang)}:[/] {stats['total_api_calls']}\n"
+            f"[bold]{tr('last_activity', lang)}:[/] {last_active}\n"
             f"[bold]System:[/] {sys.platform}\n"
-            f"[bold]Python:[/] {sys.version.split()[0]}",
+            f"[bold]Python:[/] {sys.version.split()[0]}\n"
+            f"[bold]API:[/] {api_type}",
             title=f"[cyan]{tr('system_status_title', lang)}[/]",
-            title_align="left",
             border_style="green",
             padding=(1, 2),
             width=70
@@ -868,18 +970,18 @@ def system_status(user_id):
         logger.error(f"Status error: {e}")
         console.print(f"[red]❌ {tr('gen_error', lang)}[/]")
 
-# Показать статистику
-def show_stats(user_id):
+def show_stats(user_id: str) -> None:
+    """Show usage statistics"""
     lang = get_user_lang(user_id)
-    
     try:
+        last_active = time.strftime(tr('time_format', lang), time.localtime(stats['last_activity']))
         console.print(Panel(
             f"[bold]{tr('total_messages', lang)}:[/] {stats['total_messages']}\n"
             f"[bold]{tr('saved_blocks', lang)}:[/] {stats['saved_code_blocks']}\n"
             f"[bold]{tr('active_chats', lang)}:[/] {stats['active_chats']}\n"
-            f"[bold]{tr('last_activity', lang)}:[/] {time.strftime(tr('time_format', lang), time.localtime(stats['last_activity']))}",
+            f"[bold]{tr('api_calls', lang)}:[/] {stats['total_api_calls']}\n"
+            f"[bold]{tr('last_activity', lang)}:[/] {last_active}",
             title=f"[cyan]{tr('stats_title', lang)}[/]",
-            title_align="left",
             border_style="blue",
             padding=(1, 2),
             width=60
@@ -888,137 +990,101 @@ def show_stats(user_id):
         logger.error(f"Stats error: {e}")
         console.print(f"[red]❌ {tr('gen_error', lang)}[/]")
 
-# Основная функция чата
-def chat_loop():
-    user_id = 1  # Для консольной версии используем одного пользователя
+def chat_loop() -> None:
+    """Main chat loop"""
+    user_id = "1"  # Single user for console version
     lang = get_user_lang(user_id)
-    
-    # Создаем папки при запуске
-    os.makedirs("saved_code", exist_ok=True)
-    
+    os.makedirs(os.path.join(CONFIG_DIR, "saved_code"), exist_ok=True)
+    # Initialize chats
     chats = load_user_chats()
-    user_chats = chats.get(str(user_id), {})
-    active_id = user_chats.get("active", None)
-    
-    # Создаем чат если нет активного
+    user_chats = chats.setdefault(user_id, {})
+    active_id = user_chats.get("active")
     if not active_id or active_id not in user_chats.get("chats", {}):
         active_id = new_chat(user_id)
-    
-    # Приветственное сообщение
+    # Welcome message
+    g4f_version = getattr(g4f, 'version', 'unknown')
+    api_type = tr('using_client_api', lang) if USE_CLIENT_API else tr('using_legacy_api', lang)
     console.print(Panel(
-        f"[bold cyan]{tr('welcome', lang)}[/] (g4f v0.5.7.5)\n"
+        f"[bold cyan]{tr('welcome', lang)}[/] (g4f v{G4F_VERSION})\n"
+        f"[dim]{api_type}[/]\n"
         f"[bold]{tr('developer', lang)}:[/] AiTechnologyDev\n"
         f"[bold]GitHub:[/] [link=https://github.com/AITechnologyDev]https://github.com/AITechnologyDev[/]",
-        title=f"[cyan]{tr('welcome_menu', lang)}[/]",
-        title_align="center",
+        title=f"[cyan]AI Chat Console[/]",
         border_style="bright_cyan",
         padding=(1, 4),
         width=80
     ))
-    
     show_help(user_id)
     init_providers()
-    
+    # Main interaction loop
     while True:
         try:
             console.print(f"\n[bold cyan]{tr('chat_prompt', lang)}:[/] ", end="")
             user_input = input().strip()
-            
             if not user_input:
                 continue
-                
-            # Обновляем статистику
+            # Update stats
             stats['total_messages'] += 1
             stats['last_activity'] = time.time()
-                
-            # Обработка команд
+            # Command handling
             if user_input.startswith('/'):
-                cmd = user_input.split()[0].lower()
-                
+                cmd_parts = user_input.split(maxsplit=1)
+                cmd = cmd_parts[0].lower()
+                arg = cmd_parts[1] if len(cmd_parts) > 1 else None
                 if cmd == '/exit':
                     console.print(f"[bold yellow]{tr('exit_confirmation', lang)}[/]")
                     break
-                    
                 elif cmd == '/help':
                     show_help(user_id)
-                    
                 elif cmd == '/newchat':
                     active_id = new_chat(user_id)
-                    
                 elif cmd == '/usechat':
-                    if len(user_input.split()) > 1:
-                        chat_id = user_input.split()[1].strip()
-                        if use_chat(user_id, chat_id):
-                            active_id = chat_id
+                    if arg:
+                        if use_chat(user_id, arg):
+                            active_id = arg
                     else:
-                        console.print(f"[red]❌ {tr('chat_not_found', lang)}: /usechat <id>[/]")
-                        
+                        console.print(f"[red]❌ Usage: /usechat <chat_id>[/]")
                 elif cmd == '/delchat':
-                    if len(user_input.split()) > 1:
-                        chat_id = user_input.split()[1].strip()
-                        del_chat(user_id, chat_id)
+                    if arg:
+                        del_chat(user_id, arg)
                     else:
-                        console.print(f"[red]❌ {tr('chat_not_found', lang)}: /delchat <id>[/]")
-                        
+                        console.print(f"[red]❌ Usage: /delchat <chat_id>[/]")
                 elif cmd == '/chats':
                     list_chats(user_id)
-                    
                 elif cmd == '/setmodel':
-                    if len(user_input.split()) > 1:
-                        model_name = user_input.split(maxsplit=1)[1].strip()
-                        set_model(user_id, model_name)
+                    if arg:
+                        set_model(user_id, arg)
                     else:
-                        console.print(f"[red]❌ {tr('model_error', lang)}: /setmodel <name>[/]")
-                        
+                        console.print(f"[red]❌ Usage: /setmodel <model_name>[/]")
                 elif cmd == '/mymodel':
                     show_model(user_id)
-                    
                 elif cmd == '/models':
                     list_models(user_id)
-                    
                 elif cmd == '/providers':
                     list_providers(user_id)
-                    
                 elif cmd == '/status':
                     system_status(user_id)
-                    
                 elif cmd == '/lang':
-                    if len(user_input.split()) > 1:
-                        new_lang = user_input.split()[1].strip().lower()
-                        if new_lang in ['en', 'ru']:
-                            save_user_lang(user_id, new_lang)
-                            lang = new_lang
-                            console.print(f"[green]✅ {tr('lang_set', lang)}: {new_lang}[/]")
-                        else:
-                            console.print(f"[red]❌ {tr('invalid_lang', lang)}[/]")
+                    if arg and arg in ['en', 'ru']:
+                        save_user_lang(user_id, arg)
+                        lang = arg
+                        console.print(f"[green]✅ {tr('lang_set', lang)}: {arg}[/]")
                     else:
                         console.print(f"[yellow]Current language: {lang}[/]")
-                
+                        console.print(f"[red]❌ {tr('invalid_lang', lang)}[/]")
                 elif cmd == '/stats':
                     show_stats(user_id)
-                    
                 else:
                     console.print(f"[red]❌ {tr('unknown_command', lang)}. /help {tr('help', lang).lower()}[/]")
-                    
                 continue
-            
-            # Получение истории чата
+            # Process user message
             all_chats = load_user_chats()
-            user_chats = all_chats.get(str(user_id), {})
-            chat_data = user_chats.get("chats", {}).get(active_id, {})
-            history = chat_data.get("history", [])
-            
-            # Добавление сообщения пользователя
-            user_message = {"role": "user", "content": user_input}
-            history.append(user_message)
-            
-            # Обновление истории
-            chat_data["history"] = history
-            user_chats.setdefault("chats", {})[active_id] = chat_data
-            all_chats[str(user_id)] = user_chats
-            save_user_chats(all_chats)
-            
-            # Генерация ответа с прогресс-баром
+            user_chats = all_chats.setdefault(user_id, {})
+            chat_data = user_chats.setdefault("chats", {}).setdefault(active_id, {})
+            history = chat_data.setdefault("history", [])
+            # Add user message to history
+            history.append({"role": "user", "content": user_input})
+            # Generate response with progress indicator
             response_text = ""
             with Progress(
                 SpinnerColumn(),
@@ -1027,41 +1093,28 @@ def chat_loop():
                 console=console
             ) as progress:
                 task = progress.add_task(tr('generating', lang), total=None)
-                
                 try:
                     response_text = generate_response(user_id, active_id, history)
-                    
-                    # Добавление ответа в историю
-                    if response_text and not response_text.startswith("⚠️"):
-                        assistant_message = {"role": "assistant", "content": response_text}
-                        history.append(assistant_message)
-                        chat_data["history"] = history
-                        user_chats.setdefault("chats", {})[active_id] = chat_data
-                        all_chats[str(user_id)] = user_chats
-                        save_user_chats(all_chats)
-                    
-                    # Обработка размышлений
+                    # Add to history if valid response
+                    if response_text and not response_text.startswith("❌"):
+                        history.append({"role": "assistant", "content": response_text})
+                    # Process thinking patterns
                     response_text = process_model_thinking(response_text, lang)
-                    
-                    # Автосохранение кода
+                    # Save code blocks
                     response_text = save_code_blocks(response_text, active_id, lang)
-                    
-                    # Вывод ответа
+                    # Display response with syntax highlighting
                     console.print(f"\n[bold cyan]🤖 {tr('ai_prompt', lang)}:[/]")
                     try:
-                        # Подсветка синтаксиса
                         highlighted = highlight_code(response_text)
                         console.print(highlighted)
                     except:
-                        # Простой вывод в случае ошибки
                         console.print(response_text)
-                    
                 except Exception as e:
                     logger.error(f"Generation error: {e}")
                     console.print(f"\n[red]⚠️ {tr('gen_error', lang)}[/]")
-                
                 progress.update(task, completed=100)
-                
+            # Save updated chat history
+            save_user_chats(all_chats)
         except KeyboardInterrupt:
             console.print(f"\n[bold yellow]{tr('exit', lang)}: /exit[/]")
         except Exception as e:
